@@ -1,1 +1,8 @@
-.vscode/settings.json
+.vscode/
+src/crawlers/__pycache__/
+avscraper.db
+config.yaml
+uv.lock
+.trae/
+src/__pycache__/
+videos/
