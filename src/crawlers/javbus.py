@@ -27,7 +27,6 @@ class Javbus(BaseCrawler):
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
             "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6",
-            "cookie": "PHPSESSID=2m7sv6k1jrt1bji3p6sp61fnm4; existmag=mag",
         }
         # 如果配置了站点地址，则同时设置 Referer 头，模拟浏览器正常跳转
         if self.base_url:
@@ -76,9 +75,6 @@ class Javbus(BaseCrawler):
         """
         url = self.search_url.format(keyword)
         resp = self._request(url)
-        #测试
-        a=self._request("https://www.javbus.com/pics/cover/bt57_b.jpg")
-        pass
         if resp and resp.status_code == 200:
             return url
         return None
@@ -157,8 +153,12 @@ class Javbus(BaseCrawler):
             return soup
         return None
 
-    def get_cover_url(self, url: str) -> Optional[str]:
-        """获取封面图片 URL。"""
+    def get_cover_url(self, url: str) -> Optional[List[str]]:
+        """获取封面图片 URL。请求头放在第一个，避免被拦截。"""
+        #构造请求头
+        headers = self.headers.copy()
+        headers["Referer"] = url
+        #刮捎
         soup = self._get_soup(url)
         if not soup:
             return None
@@ -168,10 +168,14 @@ class Javbus(BaseCrawler):
         src = img.get("src") or img.get("data-src")
         if not src:
             return None
-        return urljoin(self.base_url, src)
+        return [headers,urljoin(self.base_url, src)]
 
-    def get_trailer_url(self, url: str) -> Optional[str]:
+    def get_trailer_url(self, url: str) -> Optional[List[str]]:
         """获取预告片视频 URL（如果有）。"""
+        #构造请求头
+        headers = self.headers.copy()
+        headers["Referer"] = url
+        #刮捎
         soup = self._get_soup(url)
         if not soup:
             return None
@@ -181,15 +185,20 @@ class Javbus(BaseCrawler):
             source = video.find("source")
             src = (source.get("src") if source else None) or video.get("src")
             if src:
-                return urljoin(self.base_url, src)
+                return [headers,urljoin(self.base_url, src)]
         # 回退：查找 href 中包含 preview 的链接
         a = soup.find("a", href=lambda x: x and "preview" in x)
         if a and a.get("href"):
-            return urljoin(self.base_url, a["href"])
+            return [headers,urljoin(self.base_url, a["href"])]
         return None
 
     def get_image_urls(self, url: str) -> Optional[str]:
         """获取剧照图片 URL，多张图片时用英文逗号分隔。"""
+        #构造请求头
+        headers = self.headers.copy()
+        headers["Referer"] = url
+        #刮捎
+        
         soup = self._get_soup(url)
         if not soup:
             return None
@@ -205,7 +214,8 @@ class Javbus(BaseCrawler):
                     urls.append(full)
         if not urls:
             return None
-        return ", ".join(urls)
+        return [headers,", ".join(urls)]
+
     def main(self):
         """简单测试函数，用于验证爬虫是否正常工作。"""
         test_number = "ACHJ-075"

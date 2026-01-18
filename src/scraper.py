@@ -9,6 +9,7 @@ from src.models import Video
 from src.nfo_gen import nfo_gen
 from src.crawlers.javbus import Javbus
 from src.crawlers.manager import CrawlerManager
+import json
 
 
 class Scraper:
@@ -39,10 +40,13 @@ class Scraper:
                 video = self.scrape_video(video)
             #生成nfo文件
             nfo_gen.generate_nfo(video)
-            #下载资源文件
-            #TODO 增加对多站点的支持 下载时需要根据字段使用的那个爬虫 来配置请求头
+            #下载封面
             nfo_gen.download_cover(video)
-        
+            #下载预告片
+            nfo_gen.download_trailer(video)
+            #下载剧照
+            nfo_gen.download_stills(video)
+            
     def scrape_all_pending(self, file_map: dict[str, str]):
         """刮削所有状态为 PENDING (待处理) 的视频。"""
         pending_videos = self._get_pending_videos()
@@ -125,18 +129,36 @@ class Scraper:
         for k, v in data.items():
             if v is not None:
                 fields.append(f"{k} = ?")
-                # 如果v是字符串数组，先转为字符串
+                # 序列化字符串数组
                 if isinstance(v, list):
-                    v = ','.join(v)
+                    v = json.dumps(v,ensure_ascii=False)
                 values.append(v)
         values.append(number)
-        
-        sql = f"UPDATE videos SET {', '.join(fields)} WHERE parsed_number = ?"
-        cursor.execute(sql, values)
+        # 先查询番号是否存在
+        cursor.execute("SELECT 1 FROM videos WHERE parsed_number = ?", (number,))
+        exists = cursor.fetchone() is not None
+        if exists:
+            # 存在则更新
+            sql = f"UPDATE videos SET {', '.join(fields)} WHERE parsed_number = ?"
+            cursor.execute(sql, values)
+        else:
+            # 不存在则插入
+            insert_fields = ["parsed_number", "scrape_status","created_at","updated_at"]
+            insert_values = [number, "SUCCESS", time.strftime('%Y-%m-%d %H:%M:%S'),time.strftime('%Y-%m-%d %H:%M:%S')]
+            for k, v in data.items():
+                if v is not None:
+                    insert_fields.append(k)
+                    if isinstance(v, list):
+                        v = json.dumps(v,ensure_ascii=False)
+                    insert_values.append(v)
+            placeholders = ", ".join(["?"] * len(insert_fields))
+            sql = f"INSERT INTO videos ({', '.join(insert_fields)}) VALUES ({placeholders})"
+            cursor.execute(sql, insert_values)
+
         conn.commit()
         conn.close()
     def _get_video_scrape(self, video:Video)->bool:
-        """根据parsed_number查询缓存状态"""
+        """根据parsed_number查询缓存状态，如果缓存命中，将缓存数据加载到视频对象中"""
         conn = db.get_connection()
         cursor = conn.cursor()
         #查询视频缓存状态
@@ -154,5 +176,10 @@ class Scraper:
             del row["updated_at"]
             for k, v in row.items():
                 setattr(video, k, v)
+            for k in ["category", "cover_url", "trailer_url","image_urls"]:
+                if hasattr(video, k):
+                    value = getattr(video, k)
+                    if value:
+                        setattr(video, k, json.loads(value))
             return True
         return False

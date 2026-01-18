@@ -22,6 +22,7 @@ class CrawlerManager:
         遍历所有注册的爬虫，尝试刮削数据。
         一旦某个爬虫成功获取数据，立即返回。
         """
+        #TODO 重构为根据字段优先级搜索
         for crawler in self.crawlers:
             crawler_name = type(crawler).__name__
             logger.info(f"尝试使用爬虫 {crawler_name} 搜索：{keyword}")
