@@ -2,6 +2,8 @@ from asyncio import QueueShutDown
 import time
 import random
 from typing import Optional, Dict, Any
+from pathlib import Path
+import shutil
 from src.config import config
 from src.database import db
 from src.utils import logger
@@ -37,14 +39,17 @@ class Scraper:
             else:
                 #缓存不存在
                 logger.info(f"视频 {video.parsed_number} 缓存，开始刮削。")
-                video = self.scrape_video(video)
-            #生成nfo文件
+                #TODO 这个检查方法好像不太对
+                scraped_video = self.scrape_video(video)
+                if scraped_video is None:
+                    continue
+                video = scraped_video
+
+            self._move_video_to_output(video)
+
             nfo_gen.generate_nfo(video)
-            #下载封面
             nfo_gen.download_cover(video)
-            #下载预告片
             nfo_gen.download_trailer(video)
-            #下载剧照
             nfo_gen.download_stills(video)
             
     def scrape_all_pending(self, file_map: dict[str, str]):
@@ -67,6 +72,9 @@ class Scraper:
                 self._update_status(video.parsed_number, "FAILED", str(e))
 
     def scrape_video(self, video: Video)->Optional[Video]:
+        """
+        刮削视频元数据。
+        """
         logger.info(f"正在刮削元数据：{video.parsed_number}")
         
         # 使用 CrawlerManager 进行刮削
@@ -80,9 +88,8 @@ class Scraper:
         # 更新数据库
         self._update_video(video.parsed_number, metadata)
         logger.info(f"刮削成功：{video.parsed_number}")
-        
-        # 生成资源
-        # 手动更新视频对象属性以便生成 NFO
+
+        # 更新视频对象属性以便生成 NFO
         for k, v in metadata.items():
             setattr(video, k, v)
         return video
@@ -157,6 +164,7 @@ class Scraper:
 
         conn.commit()
         conn.close()
+
     def _get_video_scrape(self, video:Video)->bool:
         """根据parsed_number查询缓存状态，如果缓存命中，将缓存数据加载到视频对象中"""
         conn = db.get_connection()
@@ -183,3 +191,63 @@ class Scraper:
                         setattr(video, k, json.loads(value))
             return True
         return False
+
+    def _sanitize_for_path(self, name: str) -> str:
+        if not name:
+            return ""
+        invalid_chars = '<>:"/\\|?*'
+        result = "".join("_" if c in invalid_chars else c for c in str(name))
+        return result.strip() or ""
+
+    def _get_primary_actor_name(self, video: Video) -> str:
+        actors = getattr(video, "actors", None)
+        if not actors:
+            return "未知演员"
+        if isinstance(actors, list):
+            first = actors[0] if actors else ""
+            return self._sanitize_for_path(first) or "未知演员"
+        if isinstance(actors, str):
+            text = actors.strip()
+            try:
+                parsed = json.loads(text)
+                if isinstance(parsed, list) and parsed:
+                    first = parsed[0]
+                    return self._sanitize_for_path(first) or "未知演员"
+            except Exception:
+                pass
+            first = text.split(",")[0]
+            return self._sanitize_for_path(first) or "未知演员"
+        return self._sanitize_for_path(str(actors)) or "未知演员"
+
+    def _get_output_directory(self, video: Video) -> Path:
+        base_output = config.get("base.output_path", "javoutp")
+        root = Path(base_output)
+        actor_name = self._get_primary_actor_name(video)
+        number_dir = self._sanitize_for_path(video.parsed_number)
+        return root / actor_name / number_dir
+
+    def _move_video_to_output(self, video: Video):
+        """将视频文件归类。"""
+        if not video.file_path:
+            logger.warning(f"视频 {video.parsed_number} 缺少文件路径，无法移动。")
+            return
+        src_path = Path(video.file_path)
+        if not src_path.exists():
+            logger.warning(f"视频文件不存在，无法移动：{src_path}")
+            return
+
+        target_dir = self._get_output_directory(video)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_path = target_dir / src_path.name
+
+        if src_path.resolve() == target_path.resolve():
+            logger.info(f"视频文件已在目标目录，无需移动：{target_path}")
+            video.file_path = str(target_path)
+            return
+
+        try:
+            shutil.move(str(src_path), str(target_path))
+            video.file_path = str(target_path)
+            logger.info(f"已移动视频文件到：{target_path}")
+        except Exception as e:
+            logger.error(f"移动视频文件失败 {video.parsed_number}: {e}")
