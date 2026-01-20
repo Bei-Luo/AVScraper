@@ -4,22 +4,20 @@ import random
 from typing import Optional, Dict, Any
 from pathlib import Path
 import shutil
+import yt_dlp as ytdlp
+
 from src.config import config
-from src.database import db
 from src.utils import logger
 from src.models import Video
 from src.nfo_gen import nfo_gen
-from src.crawlers.javbus import Javbus
 from src.crawlers.manager import CrawlerManager
-import json
 
 
 class Scraper:
     def __init__(self):
         #TODO 根据配置文件初始化部分爬虫
-        #初始化爬虫
+        #初始化爬虫管理
         self.crawler_manager = CrawlerManager()
-        self.crawler_manager.register_crawler(Javbus(config))
 
     def scrape_all(self,file_map: dict[str, str]):
         """刮削所有视频。"""
@@ -32,25 +30,19 @@ class Scraper:
                 scrape_status="PENDING"
             )
 
-            # 检查缓存是否存在
-            if self._get_video_scrape(video):
-                #缓存存在
-                logger.info(f"视频 {video.parsed_number} 缓存，跳过刮削。")
-            else:
-                #缓存不存在
-                logger.info(f"视频 {video.parsed_number} 缓存，开始刮削。")
-                #TODO 这个检查方法好像不太对
-                scraped_video = self.scrape_video(video)
-                if scraped_video is None:
-                    continue
-                video = scraped_video
+            logger.info(f"视频 {video.parsed_number} ，开始刮削。")
+            #TODO 这个检查方法好像不太对
+            scraped_video = self.scrape_video(video)
+            if scraped_video is None:
+                continue
+            video = scraped_video
 
             self._move_video_to_output(video)
-
+            
             nfo_gen.generate_nfo(video)
-            nfo_gen.download_cover(video)
-            nfo_gen.download_trailer(video)
-            nfo_gen.download_stills(video)
+            nfo_gen.download_cover(self,video)
+            nfo_gen.download_trailer(self,video)
+            nfo_gen.download_stills(self,video)
             
     def scrape_all_pending(self, file_map: dict[str, str]):
         """刮削所有状态为 PENDING (待处理) 的视频。"""
@@ -84,113 +76,12 @@ class Scraper:
             logger.warning(f"刮削失败：{video.parsed_number}")
             self._update_status(video.parsed_number, "FAILED", "所有爬虫均未找到结果")
             return None
-
-        # 更新数据库
-        self._update_video(video.parsed_number, metadata)
         logger.info(f"刮削成功：{video.parsed_number}")
 
         # 更新视频对象属性以便生成 NFO
         for k, v in metadata.items():
             setattr(video, k, v)
         return video
-
-    def _get_pending_videos(self) -> list[Video]:
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM videos WHERE scrape_status = 'PENDING'")
-        rows = cursor.fetchall()
-        conn.close()
-        
-        videos = []
-        for row in rows:
-            v = Video(
-                parsed_number=row["parsed_number"],
-                scrape_status=row["scrape_status"]
-            )
-            videos.append(v)
-        return videos
-
-    def _update_status(self, number: str, status: str, error: str = None):
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE videos SET scrape_status = ?, error_msg = ?, updated_at = ? WHERE parsed_number = ?",
-            (status, error, time.strftime('%Y-%m-%d %H:%M:%S'), number)
-        )
-        conn.commit()
-        conn.close()
-
-    def _update_video(self, number: str, data: Dict[str, Any]):
-        
-        """
-        更新视频记录，将刮削到的元数据写入数据库。
-        """
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        
-        # 初始化固定字段：抓取状态和更新时间
-        fields = ["scrape_status = ?", "updated_at = ?"]
-        values = ["SUCCESS", time.strftime('%Y-%m-%d %H:%M:%S')]
-
-        # 遍历传入的数据字典，根据键名动态拼接需更新的字段
-        for k, v in data.items():
-            if v is not None:
-                fields.append(f"{k} = ?")
-                # 序列化字符串数组
-                if isinstance(v, list):
-                    v = json.dumps(v,ensure_ascii=False)
-                values.append(v)
-        values.append(number)
-        # 先查询番号是否存在
-        cursor.execute("SELECT 1 FROM videos WHERE parsed_number = ?", (number,))
-        exists = cursor.fetchone() is not None
-        if exists:
-            # 存在则更新
-            sql = f"UPDATE videos SET {', '.join(fields)} WHERE parsed_number = ?"
-            cursor.execute(sql, values)
-        else:
-            # 不存在则插入
-            insert_fields = ["parsed_number", "scrape_status","created_at","updated_at"]
-            insert_values = [number, "SUCCESS", time.strftime('%Y-%m-%d %H:%M:%S'),time.strftime('%Y-%m-%d %H:%M:%S')]
-            for k, v in data.items():
-                if v is not None:
-                    insert_fields.append(k)
-                    if isinstance(v, list):
-                        v = json.dumps(v,ensure_ascii=False)
-                    insert_values.append(v)
-            placeholders = ", ".join(["?"] * len(insert_fields))
-            sql = f"INSERT INTO videos ({', '.join(insert_fields)}) VALUES ({placeholders})"
-            cursor.execute(sql, insert_values)
-
-        conn.commit()
-        conn.close()
-
-    def _get_video_scrape(self, video:Video)->bool:
-        """根据parsed_number查询缓存状态，如果缓存命中，将缓存数据加载到视频对象中"""
-        conn = db.get_connection()
-        cursor = conn.cursor()
-        #查询视频缓存状态
-        cursor.execute("SELECT * FROM videos WHERE parsed_number = ?", (video.parsed_number,))
-        row = cursor.fetchone()
-        conn.close()
-        if not row:
-            return False
-        if row["scrape_status"]=="SUCCESS":
-            row=dict(row)
-            del row["parsed_number"]
-            del row["scrape_status"]
-            del row["error_msg"]
-            del row["created_at"]
-            del row["updated_at"]
-            for k, v in row.items():
-                setattr(video, k, v)
-            for k in ["category", "cover_url", "trailer_url","image_urls"]:
-                if hasattr(video, k):
-                    value = getattr(video, k)
-                    if value:
-                        setattr(video, k, json.loads(value))
-            return True
-        return False
 
     def _sanitize_for_path(self, name: str) -> str:
         if not name:

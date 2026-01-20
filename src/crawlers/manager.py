@@ -1,4 +1,6 @@
 from typing import List, Optional, Dict, Any
+from src.crawlers.javbus import Javbus
+from src.crawlers.javdb import Javdb
 from src.crawlers.base import BaseCrawler
 from src.utils import logger
 
@@ -12,26 +14,41 @@ class CrawlerManager:
         self.crawlers: List[BaseCrawler] = []
         #注册Javbus
         # TODO 先使用手动构建config 后面换用读取配置文件
-        config={
-            "base_url":"https://www.javbus.com",
-            "search_url":"https://www.javbus.com/{}",
-            "headers":{
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
-                "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6",
+        
+        # config={
+        #     "base_url":"https://www.javbus.com",
+        #     "search_url":"https://www.javbus.com/{}",
+        #     "headers":{
+        #         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
+        #         "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6",
+        #     },
+        #     "timeout": 10,
+        #     "max_retries": 3,
+        # }
+        # self.crawlers.append(Javbus(config))
+        # del config
+        
+        
+        # 测试实例初始化
+        config = {
+            "base_url": "https://javdb.com",
+            "search_url": "https://javdb.com/search?q={}&f=all",
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0",
+                "Cookie": "list_mode=h; theme=auto; locale=zh",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "Cache-Control": "max-age=0",
+                "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+                "Sec-Ch-Ua-Mobile": "?0",
+                "Sec-Ch-Ua-Platform": '"Windows"',
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Sec-Fetch-User": "?1",
+                "Upgrade-Insecure-Requests": "1"
             },
-            "timeout": 10,
-            "max_retries": 3,
-        }
-        self.crawlers.append(Javbus(config))
-        del config
-        config={
-            "base_url":"https://www.javbus.com",
-            "search_url":"https://www.javbus.com/{}",
-            "headers":{
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
-                "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6",
-            },
-            "timeout": 10,
+            "timeout": 15,
             "max_retries": 3,
         }
         self.crawlers.append(Javdb(config))
@@ -80,3 +97,6 @@ class CrawlerManager:
 
         logger.warning(f"所有爬虫均未找到：{keyword}")
         return None
+
+if __name__ == "__main__":
+    cm = CrawlerManager()

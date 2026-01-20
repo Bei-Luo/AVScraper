@@ -1,13 +1,5 @@
-import re
-import requests
-from bs4 import BeautifulSoup
-from typing import Optional, Dict, Any
+from typing import Optional
 from urllib.parse import urljoin
-import sys
-import os
-
-# 将项目根目录添加到 sys.path，确保模块导入正常
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../")))
 
 from src.utils import logger
 from src.crawlers.base import BaseCrawler
@@ -16,58 +8,6 @@ class Javbus(BaseCrawler):
     """
     Javbus爬虫实现。
     """
-
-    def __init__(self, config: Dict[str, Any]):
-        self.config=config
-         # 站点基础地址，用于与相对路径通过 urljoin 拼接成完整链接
-        self.base_url = "https://www.javbus.com"
-        # 搜索地址模板，一般包含一个关键字占位符，如 ".../search?wd={}"
-        self.search_url = "https://www.javbus.com/{}"
-        # 请求头，目前只设置 User-Agent，避免被目标站点识别为爬虫
-        self.headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
-            "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6",
-        }
-        # 如果配置了站点地址，则同时设置 Referer 头，模拟浏览器正常跳转
-        if self.base_url:
-            self.headers["Referer"] = self.base_url
-        # 请求超时时间，避免网络问题导致长时间阻塞
-        self.timeout = self.config.get("timeout", 30)
-        # 代理地址（如果有），例如 "http://user:pass@host:port"
-        self.proxy = self.config.get("proxy")
-        # requests 所需的代理配置字典，如果没有配置代理则为 None
-        self.proxies = {"http": self.proxy, "https": self.proxy} if self.proxy else None
-        # 简单的 Soup 缓存，按 URL 复用解析结果，避免重复请求同一详情页
-        self._soup_cache = {}
-        logger.info(f"初始化爬虫 {self.__class__.__name__} 完成")
-
-    def _request(self, url: str) -> Optional[requests.Response]:
-        # 统一封装的 GET 请求方法，负责带上头信息、代理和超时时间
-        try:
-            resp = requests.get(
-                url,
-                headers=self.headers,
-                proxies=self.proxies,
-                timeout=self.timeout,
-            )
-            resp.raise_for_status()
-            # 状态码正常时返回 Response 对象
-            return resp
-        except requests.RequestException as e:
-            # 捕获所有 requests 异常，记录日志方便排查
-            logger.error(f"请求错误 {url}: {e}")
-            return None
-    def _get_soup(self, url: str) -> Optional[BeautifulSoup]:
-        """根据详情页 URL 返回 BeautifulSoup 对象，并按 URL 进行简单缓存。"""
-        # 如果缓存中已有，直接复用，避免重复请求
-        if url in self._soup_cache:
-            return self._soup_cache[url]
-        resp = self._request(url)
-        if not resp:
-            return None
-        soup = BeautifulSoup(resp.text, "lxml")
-        self._soup_cache[url] = soup
-        return soup
 
     def search(self, keyword: str) -> Optional[str]:
         """
@@ -239,9 +179,15 @@ class Javbus(BaseCrawler):
 
 if __name__ == "__main__":
     # 测试实例初始化
-    config = {
-        "proxy": None,
-        "timeout": 30
+    config={
+        "base_url":"https://www.javbus.com",
+        "search_url":"https://www.javbus.com/{}",
+        "headers":{
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
+            "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6",
+        },
+        "timeout": 10,
+        "max_retries": 3,
     }
     spider = Javbus(config)
     spider.main()

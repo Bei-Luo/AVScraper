@@ -3,7 +3,6 @@ import re
 from pathlib import Path
 from typing import List, Optional
 from src.config import config
-from src.database import db
 from src.utils import logger
 from src.models import Video
 
