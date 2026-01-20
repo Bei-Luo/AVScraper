@@ -10,12 +10,32 @@ class CrawlerManager:
 
     def __init__(self):
         self.crawlers: List[BaseCrawler] = []
+        #注册Javbus
+        # TODO 先使用手动构建config 后面换用读取配置文件
+        config={
+            "base_url":"https://www.javbus.com",
+            "search_url":"https://www.javbus.com/{}",
+            "headers":{
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
+                "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6",
+            },
+            "timeout": 10,
+            "max_retries": 3,
+        }
+        self.crawlers.append(Javbus(config))
+        del config
+        config={
+            "base_url":"https://www.javbus.com",
+            "search_url":"https://www.javbus.com/{}",
+            "headers":{
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0",
+                "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7,ja;q=0.6",
+            },
+            "timeout": 10,
+            "max_retries": 3,
+        }
+        self.crawlers.append(Javdb(config))
 
-    def register_crawler(self, crawler: BaseCrawler):
-        """
-        注册一个新的爬虫实例。
-        """
-        self.crawlers.append(crawler)
         
     def scrape(self, keyword: str) -> Optional[Dict[str, Any]]:
         """
