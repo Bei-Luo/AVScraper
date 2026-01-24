@@ -32,16 +32,28 @@ class NFOGenerator:
         
         root = ET.Element("movie")
         ET.SubElement(root, "title").text = video.title
-        ET.SubElement(root, "originaltitle").text = video.parsed_number
+        ET.SubElement(root, "name").text = video.parsed_number
+        ET.SubElement(root, "sorttitle").text = video.parsed_number
         ET.SubElement(root, "plot").text = video.description or ""
         ET.SubElement(root, "year").text = video.release_date[:4] if video.release_date else ""
         ET.SubElement(root, "releasedate").text = video.release_date or ""
         ET.SubElement(root, "studio").text = video.studio or ""
         ET.SubElement(root, "director").text = video.director or ""
-        
+
+        # 系列
+        if video.series:
+            ET.SubElement(root, "set").text = video.series
+
+        # 类别
+        if video.category:
+            tags = video.category
+            for tag in tags:
+                ET.SubElement(root, "tag").text = tag.strip()
+
         # 演员
         if video.actors:
-            for actor_name in video.actors.split(","):
+            actors_list = video.actors
+            for actor_name in actors_list:
                 actor = ET.SubElement(root, "actor")
                 ET.SubElement(actor, "name").text = actor_name.strip()
 
@@ -54,7 +66,7 @@ class NFOGenerator:
         except Exception as e:
             logger.error(f"写入 NFO 失败 {video.parsed_number}: {e}")
 
-    def download_cover(self,a, video): 
+    def download_cover(self,crawler: Crawler, video:Video): 
         """
         下载视频封面并保存为 JPG 文件。
         封面路径规则：
@@ -65,23 +77,18 @@ class NFOGenerator:
         if not video.file_path or not video.cover_url:
             return
         try:
-            # Emby 使用 folder.jpg 或 filename-poster.jpg
-            # 如果视频在自己的文件夹中，folder.jpg 最好。
-            # 如果混合存放，filename-poster.jpg 或 filename.jpg
-            # 这里使用 filename.jpg (封面)
             cover_path = Path(video.file_path).with_suffix(".jpg")
-            
             # 简单检查避免重复下载
             if cover_path.exists():
                 logger.info(f"封面已存在 {video.parsed_number}，跳过下载。")
                 return
 
             logger.info(f"正在下载封面 {video.parsed_number}...")
-            #TODO 多站点下载 要跟随站点优先级设置 
-            #这里为了测试先粗暴的使用javdb下载
-
-            resp = a.crawler_manager.crawlers[0]._request(video.cover_url)
-
+            #更新请求头
+            Referer=crawler.session.headers["Referer"]
+            crawler.session.headers["Referer"]=crawler.detail_page
+            resp = crawler._request(video.cover_url[1])
+            crawler.session.headers["Referer"]=Referer
             resp.raise_for_status()
             
             with open(cover_path, "wb") as f:
@@ -91,17 +98,12 @@ class NFOGenerator:
         except Exception as e:
             logger.error(f"下载封面失败 {video.parsed_number}: {e}")
 
-    def download_trailer(self, scraper_instance, video: Video):
+    def download_trailer(self, crawler: Crawler, video: Video):
         """
         下载视频预告片并保存为 MP4 文件。
         预告片路径规则：
         - filename-trailer.mp4
         """
-
-        # ================= 测试用 Cookie =================
-        # 在这里直接粘贴你的 Cookie 字符串 (key=value; key2=value2)
-        manual_cookies = 
-        # ===============================================
         if not video.file_path or not video.trailer_url:
             return
 
@@ -130,18 +132,19 @@ class NFOGenerator:
                 'nocheckcertificate': True,
             }
             # 优先使用手动设置的 Cookie
+            manual_cookies=crawler.headers["Cookie"]
             if manual_cookies:
                 ytdlp_opts.setdefault('http_headers', {})['Cookie'] = manual_cookies
 
             with yt_dlp.YoutubeDL(ytdlp_opts) as ydl:
-                ydl.download([video.trailer_url])
+                ydl.download([video.trailer_url[1]])
             
             logger.info(f"已保存预告片: {final_trailer_path}")
 
         except Exception as e:
             logger.error(f"下载预告片失败 {video.parsed_number}: {e}")
 
-    def download_stills(self,a, video: Video):
+    def download_stills(self,crawler: Crawler, video: Video):
         """
         下载视频剧照并保存为 JPG 文件。
         剧照路径规则：
@@ -153,6 +156,7 @@ class NFOGenerator:
             return
         try:
             urls = video.image_urls
+            urls = urls[1:]
             video_path = Path(video.file_path)
             for idx, url in enumerate(urls, start=1):
                 parsed = urlparse(url)
@@ -162,10 +166,12 @@ class NFOGenerator:
                     logger.info(f"剧照已存在 {video.parsed_number} 第 {idx} 张，跳过下载。")
                     continue
                 logger.info(f"正在下载剧照 {video.parsed_number} 第 {idx} 张...")
-                #TODO 多站点下载 要跟随站点优先级设置 
-                #这里为了测试先粗暴的使用javdb下载
-                resp = a.crawler_manager.crawlers[0]._request(url)
+
+                Referer=crawler.session.headers["Referer"]
+                crawler.session.headers["Referer"]=crawler.detail_page
+                resp = crawler._request(url)
                 resp.raise_for_status()
+                crawler.session.headers["Referer"]=Referer
                 with open(still_path, "wb") as f:
                     f.write(resp.content)
             logger.info(f"剧照下载完成 {video.parsed_number}")

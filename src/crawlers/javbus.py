@@ -71,33 +71,30 @@ class Javbus(BaseCrawler):
             return soup.strip()
         return None
 
-    def get_category(self, url: str) -> Optional[str]:
+    def get_category(self, url: str) -> Optional[List[str]]:
         """获取类别/标签，多值时用英文逗号分隔。"""
         soup = self._get_soup(url).select('div.col-md-3')[0].find_all("p")[8].find_all("a")
         if soup:
             if len(soup)==1:
-                soup=soup[0].string.strip()
+                soup=[soup[0].string.strip()]
             else:
                 soup=[soup.string.strip() for soup in soup]
             return soup
         return None
 
-    def get_actors(self, url: str) -> Optional[str]:
+    def get_actors(self, url: str) -> Optional[List[str]]:
         """获取演员名称，多名演员时用英文逗号分隔。"""
         soup = self._get_soup(url).select('div.col-md-3')[0].find_all("p")[10].find_all("a")
         if soup:
             if len(soup)==1:
-                soup=soup[0].string.strip()
+                soup=[soup[0].string.strip()]
             else:
                 soup=[soup.string.strip() for soup in soup]
             return soup
         return None
 
     def get_cover_url(self, url: str) -> Optional[List[str]]:
-        """获取封面图片 URL。请求头放在第一个，避免被拦截。"""
-        #构造请求头
-        headers = self.headers.copy()
-        headers["Referer"] = url
+        """获取封面图片 URL。第一个放标识符"""
         #刮捎
         soup = self._get_soup(url)
         if not soup:
@@ -108,13 +105,10 @@ class Javbus(BaseCrawler):
         src = img.get("src") or img.get("data-src")
         if not src:
             return None
-        return [headers,urljoin(self.base_url, src)]
+        return [self.__class__.__name__, urljoin(self.base_url, src)]
 
     def get_trailer_url(self, url: str) -> Optional[List[str]]:
-        """获取预告片视频 URL（如果有）。"""
-        #构造请求头
-        headers = self.headers.copy()
-        headers["Referer"] = url
+        """获取预告片视频 URL。第一个放标识符"""
         #刮捎
         soup = self._get_soup(url)
         if not soup:
@@ -125,18 +119,15 @@ class Javbus(BaseCrawler):
             source = video.find("source")
             src = (source.get("src") if source else None) or video.get("src")
             if src:
-                return [headers,urljoin(self.base_url, src)]
+                return [self.__class__.__name__,urljoin(self.base_url, src)]
         # 回退：查找 href 中包含 preview 的链接
         a = soup.find("a", href=lambda x: x and "preview" in x)
         if a and a.get("href"):
-            return [headers,urljoin(self.base_url, a["href"])]
+            return [self.__class__.__name__,urljoin(self.base_url, a["href"])]
         return None
 
-    def get_image_urls(self, url: str) -> Optional[str]:
-        """获取剧照图片 URL，多张图片时用英文逗号分隔。"""
-        #构造请求头
-        headers = self.headers.copy()
-        headers["Referer"] = url
+    def get_image_urls(self, url: str) -> Optional[List[str]]:
+        """获取剧照图片 URL。第一个放标识符"""
         #刮捎
         
         soup = self._get_soup(url)
@@ -154,7 +145,8 @@ class Javbus(BaseCrawler):
                     urls.append(full)
         if not urls:
             return None
-        return [headers,", ".join(urls)]
+        urls.insert(0,self.__class__.__name__)
+        return urls
 
     def main(self):
         """简单测试函数，用于验证爬虫是否正常工作。"""
@@ -164,18 +156,22 @@ class Javbus(BaseCrawler):
         if not url:
             print("未找到详情页 URL")
             return
-        print(f"搜索到详情页 URL：{url}")
-        print(f"标题：{self.get_title(url)}")
-        print(f"简介：{self.get_description(url)}")
-        print(f"发行日期：{self.get_release_date(url)}")
-        print(f"导演：{self.get_director(url)}")
-        print(f"片商：{self.get_studio(url)}")
-        print(f"系列：{self.get_series(url)}")
-        print(f"类别：{self.get_category(url)}")
-        print(f"演员：{self.get_actors(url)}")
-        print(f"封面 URL：{self.get_cover_url(url)}")
-        print(f"预告片 URL：{self.get_trailer_url(url)}")
-        print(f"剧照 URL：{self.get_image_urls(url)}")
+        print(f"type:{type(url)}"+f"搜索到详情页 URL：{url}")
+        print(f"type:{type(self.get_title(url))}"+f"标题：{self.get_title(url)}")
+        print(f"type:{type(self.get_description(url))}"+f"简介：{self.get_description(url)}")
+        print(f"type:{type(self.get_release_date(url))}"+f"发行日期：{self.get_release_date(url)}")
+        print(f"type:{type(self.get_director(url))}"+f"导演：{self.get_director(url)}")
+        print(f"type:{type(self.get_studio(url))}"+f"片商：{self.get_studio(url)}")
+        print(f"type:{type(self.get_series(url))}"+f"系列：{self.get_series(url)}")
+        print(f"type:{type(self.get_category(url))}"+f"类别：{self.get_category(url)}")
+        print(f"type:{type(self.get_actors(url))}"+f"演员：{self.get_actors(url)}")
+        print(f"type:{type(self.get_cover_url(url))}"+f"封面 URL：{self.get_cover_url(url)}")
+        print(f"type:{type(self.get_trailer_url(url))}"+f"预告片 URL：{self.get_trailer_url(url)}")
+        print(f"type:{type(self.get_image_urls(url))}"+f"剧照 URL：{self.get_image_urls(url)}")
+        self.session.headers["Referer"]="https://www.javbus.com/ACHJ-075"
+        # a["Referer"]="https://www.javbus.com/ACHJ-075"
+        a=self._request(self.get_cover_url(url)[1])
+        print(f"headers:{self.session.headers}")
 
 if __name__ == "__main__":
     # 测试实例初始化

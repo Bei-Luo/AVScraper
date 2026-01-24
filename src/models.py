@@ -12,11 +12,11 @@ class Video:
     director: Optional[str] = None
     studio: Optional[str] = None
     series: Optional[str] = None
-    category: Optional[str] = None
-    actors: Optional[str] = None
-    cover_url: Optional[str] = None
-    trailer_url: Optional[str] = None
-    image_urls: Optional[str] = None
+    category: list[str]  = None
+    actors: list[str]  = None
+    cover_url: list[str] = None
+    trailer_url: list[str] = None
+    image_urls: list[str]  = None
     
     # 系统字段
     scrape_status: str = "PENDING"  # PENDING (待处理), SUCCESS (成功), FAILED (失败)

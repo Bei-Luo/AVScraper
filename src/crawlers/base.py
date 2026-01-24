@@ -40,6 +40,8 @@ class BaseCrawler(ABC):
         } if self.proxy else None
         # 简单的Soup缓存
         self._soup_cache = {}
+        # 详情页URL
+        self.detail_page = None
         # 初始化 Session
         self.session = requests.Session()
         self.session.headers.update(self.headers)
@@ -141,35 +143,35 @@ class BaseCrawler(ABC):
         pass
 
     @abstractmethod
-    def get_category(self, url: str) -> Optional[str]:
+    def get_category(self, url: str) -> Optional[List[str]]:
         """
         根据详情页 URL 获取类别。
         """
         pass
 
     @abstractmethod
-    def get_actors(self, url: str) -> Optional[str]:
+    def get_actors(self, url: str) -> Optional[List[str]]:
         """
         根据详情页 URL 获取演员信息。
         """
         pass
 
     @abstractmethod
-    def get_cover_url(self, url: str) -> Optional[str]:
+    def get_cover_url(self, url: str) -> Optional[List[str]]:
         """
         根据详情页 URL 获取封面图片地址。
         """
         pass
 
     @abstractmethod
-    def get_trailer_url(self, url: str) -> Optional[str]:
+    def get_trailer_url(self, url: str) -> Optional[List[str]]:
         """
         根据详情页 URL 获取预告片地址。
         """
         pass
 
     @abstractmethod
-    def get_image_urls(self, url: str) -> Optional[str]:
+    def get_image_urls(self, url: str) -> Optional[List[str]]:
         """
         根据详情页 URL 获取剧照图片地址列表（序列化为字符串）。
         """

@@ -15,9 +15,8 @@ from src.crawlers.manager import CrawlerManager
 
 class Scraper:
     def __init__(self):
-        #TODO 根据配置文件初始化部分爬虫
         #初始化爬虫管理
-        self.crawler_manager = CrawlerManager()
+        self.crawler_manager = CrawlerManager(config)
 
     def scrape_all(self,file_map: dict[str, str]):
         """刮削所有视频。"""
@@ -36,13 +35,14 @@ class Scraper:
             if scraped_video is None:
                 continue
             video = scraped_video
-
-            self._move_video_to_output(video)
+            #留一个回调先不执行移动只更新目录
+            # self._move_video_to_output(video)
             
             nfo_gen.generate_nfo(video)
-            nfo_gen.download_cover(self,video)
-            nfo_gen.download_trailer(self,video)
-            nfo_gen.download_stills(self,video)
+            nfo_gen.download_cover(self.crawler_manager.crawlers[video.cover_url[0]],video)
+            if video.trailer_url:
+                nfo_gen.download_trailer(self.crawler_manager.crawlers[video.trailer_url[0]],video)
+            nfo_gen.download_stills(self.crawler_manager.crawlers[video.image_urls[0]],video)
             
     def scrape_all_pending(self, file_map: dict[str, str]):
         """刮削所有状态为 PENDING (待处理) 的视频。"""
