@@ -1,11 +1,10 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Dict, List
 import requests
 import time
 from bs4 import BeautifulSoup
 
 from src.utils import logger
-
 
 
 class BaseCrawler(ABC):
@@ -14,7 +13,7 @@ class BaseCrawler(ABC):
     定义了搜索和获取详情的接口。
     """
 
-    def __init__(self, config: Dict[str,Any]) -> None:
+    def __init__(self, config: Dict[str, Any]) -> None:
         """
         初始化类,配置基础信息。
         """
@@ -34,10 +33,14 @@ class BaseCrawler(ABC):
         # 代理地址 如果有
         self.proxy = self.config.get("proxy", None)
         # 配置代理地址
-        self.proxies={
-            "http": self.proxy,
-            "https": self.proxy,
-        } if self.proxy else None
+        self.proxies = (
+            {
+                "http": self.proxy,
+                "https": self.proxy,
+            }
+            if self.proxy
+            else None
+        )
         # 简单的Soup缓存
         self._soup_cache = {}
         # 详情页URL
@@ -48,7 +51,7 @@ class BaseCrawler(ABC):
         if self.proxies:
             self.session.proxies.update(self.proxies)
         # 先访问首页获取cookie
-        response=self._request(self.base_url)
+        response = self._request(self.base_url)
         logger.debug(f"首页响应状态码: {response.status_code}")
         logger.info(f"初始化爬虫 {self.__class__.__name__} 完成")
 
@@ -65,8 +68,7 @@ class BaseCrawler(ABC):
 
                 return response
             except requests.RequestException as e:
-                # TODO 连接 重试 暴力延时100ms
-                print(response.text)
+                # 重试：对请求异常做短暂退避
                 time.sleep(0.1)
 
                 retries += 1
@@ -90,7 +92,6 @@ class BaseCrawler(ABC):
         soup = BeautifulSoup(resp.text, "lxml")
         self._soup_cache[url] = soup
         return soup
-
 
     @abstractmethod
     def search(self, keyword: str) -> Optional[str]:
@@ -173,7 +174,6 @@ class BaseCrawler(ABC):
     @abstractmethod
     def get_image_urls(self, url: str) -> Optional[List[str]]:
         """
-        根据详情页 URL 获取剧照图片地址列表（序列化为字符串）。
+        根据详情页 URL 获取剧照图片地址列表。
         """
         pass
-

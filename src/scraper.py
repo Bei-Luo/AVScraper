@@ -1,10 +1,10 @@
-from asyncio import QueueShutDown
 import time
 import random
-from typing import Optional, Dict, Any
+from typing import Optional
 from pathlib import Path
 import shutil
-import yt_dlp as ytdlp
+import json
+
 
 from src.config import config
 from src.utils import logger
@@ -15,35 +15,55 @@ from src.crawlers.manager import CrawlerManager
 
 class Scraper:
     def __init__(self):
-        #初始化爬虫管理
+        # 初始化爬虫管理
         self.crawler_manager = CrawlerManager(config)
 
-    def scrape_all(self,file_map: dict[str, str]):
+    def scrape_all(self, file_map: dict[str, str]):
         """刮削所有视频。"""
 
         for parsed_number, file_path in file_map.items():
-            #构建视频文件信息
+            # 构建视频文件信息
             video = Video(
                 parsed_number=parsed_number,
                 file_path=file_path,
-                scrape_status="PENDING"
+                scrape_status="PENDING",
             )
 
             logger.info(f"视频 {video.parsed_number} ，开始刮削。")
-            #TODO 这个检查方法好像不太对
+            # TODO：当前以 scrape_video 返回 None 作为失败信号；如需区分“未找到/网络失败/解析失败”等原因，建议统一用 scrape_status+error_msg 或抛出/包装异常来表达。
             scraped_video = self.scrape_video(video)
             if scraped_video is None:
                 continue
             video = scraped_video
-            #留一个回调先不执行移动只更新目录
-            # self._move_video_to_output(video)
-            
-            nfo_gen.generate_nfo(video)
-            nfo_gen.download_cover(self.crawler_manager.crawlers[video.cover_url[0]],video)
-            if video.trailer_url:
-                nfo_gen.download_trailer(self.crawler_manager.crawlers[video.trailer_url[0]],video)
-            nfo_gen.download_stills(self.crawler_manager.crawlers[video.image_urls[0]],video)
-            
+            # 读取配置文件 是否移动文件
+            it = self._move_video_to_output(video)
+            if config.get("base.move_files", False):
+                next(it)
+            # 是否生成NFO
+            if config.get("base.generate_nfo", False):
+                nfo_gen.generate_nfo(video)
+            # 是否下载封面
+            if config.get("base.download_cover", False):
+                nfo_gen.download_cover(
+                    self.crawler_manager.crawlers[video.cover_url[0]], video
+                )
+            # 是否下载预告片
+            if config.get("base.download_trailer", False) and video.trailer_url:
+                nfo_gen.download_trailer(
+                    self.crawler_manager.crawlers[video.trailer_url[0]], video
+                )
+            # 是否下载剧照
+            if config.get("base.download_stills", False):
+                nfo_gen.download_stills(
+                    self.crawler_manager.crawlers[video.image_urls[0]], video
+                )
+
+            if config.get("base.move_files", False):
+                try:
+                    next(it)
+                except StopIteration:
+                    pass
+
     def scrape_all_pending(self, file_map: dict[str, str]):
         """刮削所有状态为 PENDING (待处理) 的视频。"""
         pending_videos = self._get_pending_videos()
@@ -63,15 +83,15 @@ class Scraper:
                 logger.error(f"视频 {video.parsed_number} 刮削失败：{e}")
                 self._update_status(video.parsed_number, "FAILED", str(e))
 
-    def scrape_video(self, video: Video)->Optional[Video]:
+    def scrape_video(self, video: Video) -> Optional[Video]:
         """
         刮削视频元数据。
         """
         logger.info(f"正在刮削元数据：{video.parsed_number}")
-        
+
         # 使用 CrawlerManager 进行刮削
         metadata = self.crawler_manager.scrape(video.parsed_number)
-        
+
         if not metadata:
             logger.warning(f"刮削失败：{video.parsed_number}")
             self._update_status(video.parsed_number, "FAILED", "所有爬虫均未找到结果")
@@ -137,8 +157,9 @@ class Scraper:
             return
 
         try:
-            shutil.move(str(src_path), str(target_path))
             video.file_path = str(target_path)
+            yield
+            shutil.move(str(src_path), str(target_path))
             logger.info(f"已移动视频文件到：{target_path}")
         except Exception as e:
             logger.error(f"移动视频文件失败 {video.parsed_number}: {e}")

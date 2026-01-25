@@ -1,8 +1,6 @@
 from typing import List, Optional, Dict, Any
-from src import config
 from src.crawlers.javbus import Javbus
 from src.crawlers.javdb import Javdb
-from src.crawlers.base import BaseCrawler
 from src.utils import logger
 
 
@@ -11,63 +9,66 @@ class CrawlerManager:
     管理多个爬虫实例。
     """
 
-    def __init__(self,config):
-        self.crawlers= {}
-        #注册javdb爬虫
-        crawlers_config={
-            "base_url": config.get("scraper.groups.javdb.base_url"),
-            "search_url": config.get("scraper.groups.javdb.search_url"),
+    def __init__(self, config):
+        self.crawlers = {}
+        self.config = config
+        # 注册javdb爬虫
+        crawlers_config = {
+            "base_url": self.config.get("scraper.groups.javdb.base_url"),
+            "search_url": self.config.get("scraper.groups.javdb.search_url"),
             "headers": {
-                "User-Agent": config.get("scraper.groups.javdb.User-Agent",""),
-                "Accept-Language": config.get("scraper.groups.javdb.Accept-Language",""),
-                "Cookie": config.get("scraper.groups.javdb.Cookie","")
+                "User-Agent": self.config.get("scraper.groups.javdb.User-Agent", ""),
+                "Accept-Language": self.config.get(
+                    "scraper.groups.javdb.Accept-Language", ""
+                ),
+                "Cookie": self.config.get("scraper.groups.javdb.Cookie", ""),
             },
-            "timeout": config.get("scraper.groups.javdb.timeout", config.get("scraper.timeout")),
-            "max_retries": config.get("scraper.groups.javdb.max_retries", config.get("scraper.max_retries")),
-            "proxy": config.get("scraper.groups.javdb.proxy", config.get("scraper.proxy"))
+            "timeout": self.config.get(
+                "scraper.groups.javdb.timeout", self.config.get("scraper.timeout")
+            ),
+            "max_retries": self.config.get(
+                "scraper.groups.javdb.max_retries",
+                self.config.get("scraper.max_retries"),
+            ),
+            "proxy": self.config.get(
+                "scraper.groups.javdb.proxy", self.config.get("scraper.proxy")
+            ),
         }
-        self.crawlers["Javdb"]=Javdb(crawlers_config)
+        self.crawlers["Javdb"] = Javdb(crawlers_config)
 
-        #注册javbus爬虫
-        crawlers_config={
-            "base_url": config.get("scraper.groups.javbus.base_url"),
-            "search_url": config.get("scraper.groups.javbus.search_url"),
+        # 注册javbus爬虫
+        crawlers_config = {
+            "base_url": self.config.get("scraper.groups.javbus.base_url"),
+            "search_url": self.config.get("scraper.groups.javbus.search_url"),
             "headers": {
-                "User-Agent": config.get("scraper.groups.javbus.User-Agent",""),
-                "Accept-Language": config.get("scraper.groups.javbus.Accept-Language",""),
-                "Cookie": config.get("scraper.groups.javbus.Cookie","")
+                "User-Agent": self.config.get("scraper.groups.javbus.User-Agent", ""),
+                "Accept-Language": self.config.get(
+                    "scraper.groups.javbus.Accept-Language", ""
+                ),
+                "Cookie": self.config.get("scraper.groups.javbus.Cookie", ""),
             },
-            "timeout": config.get("scraper.groups.javbus.timeout", config.get("scraper.timeout")),
-            "max_retries": config.get("scraper.groups.javbus.max_retries", config.get("scraper.max_retries")),
-            "proxy": config.get("scraper.groups.javbus.proxy", config.get("scraper.proxy"))
+            "timeout": self.config.get(
+                "scraper.groups.javbus.timeout", self.config.get("scraper.timeout")
+            ),
+            "max_retries": self.config.get(
+                "scraper.groups.javbus.max_retries",
+                self.config.get("scraper.max_retries"),
+            ),
+            "proxy": self.config.get(
+                "scraper.groups.javbus.proxy", self.config.get("scraper.proxy")
+            ),
         }
-        self.crawlers["Javbus"]=Javbus(crawlers_config)
+        self.crawlers["Javbus"] = Javbus(crawlers_config)
 
-
-
-        
     def scrape(self, keyword: str) -> Optional[Dict[str, Any]]:
         """
-        遍历所有注册的爬虫，尝试刮削数据。
-        一旦某个爬虫成功获取数据，立即返回。
+        遍历启用的爬虫，收集各站点返回的字段结果，并按配置的字段优先级进行聚合。
+        只要聚合结果中任意字段非空即返回聚合 dict；若所有站点均无结果则返回 None。
         """
-        #TODO 重构为根据字段优先级搜索
         # 字段优先级配置：可指定多个站点，按顺序尝试
-        self.field_priority: Dict[str, List[str]] = {
-            "title": ["javbus", "javdb"],
-            "description": ["javdb", "javbus"],
-            "release_date": ["javbus"],
-            "director": ["javbus"],
-            "studio": ["javbus"],
-            "series": ["javbus"],
-            "category": ["javbus"],
-            "actors": ["javbus", "javdb"],
-            "cover_url": ["javbus", "javdb"],
-            "trailer_url": ["javdb"],
-            "image_urls": ["javdb", "javbus"],
-        }
+        self.field_priority: Dict[str, List[str]] = self.config.get("scraper.priority")
         # 启用的爬虫列表，可按需增删
-        self.enabled_crawlers: List[str] = ["javbus", "javdb"]
+        self.enabled_crawlers: List[str] = self.config.get("scraper.enabled_crawlers")
         # 根据字段优先级，聚合各爬虫数据
         merged: Dict[str, Any] = {
             "title": None,
@@ -96,7 +97,7 @@ class CrawlerManager:
                     continue
 
                 logger.info(f"爬虫 {crawler_name} 找到链接：{detail_url}")
-                #更新详情页地址
+                # 更新详情页地址
                 crawler.detail_page = detail_url
                 data: Dict[str, Any] = {
                     "title": crawler.get_title(detail_url),
@@ -119,7 +120,10 @@ class CrawlerManager:
         # 按字段优先级填充 merged
         for field, priority_list in self.field_priority.items():
             for site in priority_list:
-                if site in crawler_results and crawler_results[site].get(field) is not None:
+                if (
+                    site in crawler_results
+                    and crawler_results[site].get(field) is not None
+                ):
                     merged[field] = crawler_results[site][field]
                     logger.info(f"字段 {field} 取自 {site}")
                     break
@@ -132,5 +136,7 @@ class CrawlerManager:
         logger.warning(f"所有爬虫均未找到：{keyword}")
         return None
 
+
 if __name__ == "__main__":
+    # 示例：CrawlerManager 需要传入配置对象（src.config.config）；此处仅保留入口占位，直接运行会因缺少参数而失败。
     cm = CrawlerManager()

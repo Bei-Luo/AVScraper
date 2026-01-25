@@ -1,8 +1,8 @@
 from typing import Optional
-import json
 
 from src.utils import logger
 from src.crawlers.base import BaseCrawler
+from typing import List
 
 
 class Javdb(BaseCrawler):
@@ -16,7 +16,7 @@ class Javdb(BaseCrawler):
         """
         if not soup:
             return None
-        
+
         for block in soup.select(".movie-panel-info .panel-block"):
             strong = block.select_one("strong")
             if strong and key in strong.get_text():
@@ -34,11 +34,11 @@ class Javdb(BaseCrawler):
             url = self.search_url.format(keyword)
             logger.info(f"正在搜索: {keyword}, URL: {url}")
             soup = self._get_soup(url)
-            
+
             if not soup:
                 logger.error(f"无法获取搜索结果页面: {url}")
                 return None
-            
+
             # 获取搜索结果列表
             items = soup.select(".movie-list .item")
             if not items:
@@ -50,9 +50,9 @@ class Javdb(BaseCrawler):
                 uid_node = item.select_one(".video-title strong")
                 if not uid_node:
                     continue
-                
+
                 uid = uid_node.get_text(strip=True)
-                
+
                 # 简单对比番号，忽略大小写
                 if uid.lower() == keyword.lower():
                     link_node = item.select_one("a")
@@ -64,7 +64,7 @@ class Javdb(BaseCrawler):
                         return self.base_url.rstrip("/") + href
 
             return None
-            
+
         except Exception as e:
             logger.error(f"搜索出错: {e}")
             return None
@@ -76,7 +76,7 @@ class Javdb(BaseCrawler):
         soup = self._get_soup(url)
         if not soup:
             return None
-        
+
         title_node = soup.select_one(".video-detail .title.is-4 .current-title")
         if title_node:
             return title_node.get_text(strip=True)
@@ -86,7 +86,7 @@ class Javdb(BaseCrawler):
         """
         根据详情页 URL 获取简介。
         """
-        # JavDB 详情页似乎没有专门的简介部分，或者样本中未体现
+        # 当前实现未解析“简介/剧情”字段，直接返回 None；若后续确认站点提供对应区域，可在此补充 selector 并解析文本。
         return None
 
     def get_release_date(self, url: str) -> Optional[str]:
@@ -155,55 +155,55 @@ class Javdb(BaseCrawler):
 
     def get_cover_url(self, url: str) -> Optional[List[str]]:
         """
-        根据详情页 URL 获取封面图片地址。
+        根据详情页 URL 获取封面图片地址：返回 [爬虫名, 封面URL]，下游用第 0 项选择对应爬虫实例。
         """
         soup = self._get_soup(url)
         if not soup:
             return None
-        
+
         cover_node = soup.select_one(".video-detail .column-video-cover .video-cover")
         if cover_node:
-            return [self.__class__.__name__,cover_node.get("src")]
+            return [self.__class__.__name__, cover_node.get("src")]
         return None
 
     def get_trailer_url(self, url: str) -> Optional[List[str]]:
         """
-        根据详情页 URL 获取预告片地址。
+        根据详情页 URL 获取预告片地址：返回 [爬虫名, 预告片URL]，下游用第 0 项选择对应爬虫实例。
         """
         soup = self._get_soup(url)
         if not soup:
             return None
-        
-        # DEBUG: 保存 HTML 到本地以便分析
-        with open("debug_detail.html", "w", encoding="utf-8") as f:
-            f.write(str(soup))
-        
+
+        # 调试用：保存详情页 HTML 到本地以便分析选择器/结构变化（会覆盖 debug_detail.html，建议仅在本地排查时启用）。
+        if logger.isEnabledFor(10):
+            with open("debug_detail.html", "w", encoding="utf-8") as f:
+                f.write(str(soup))
         # 策略 1: 直接查找 id="preview-video" 的 video 标签
         # 登录后的页面通常会有这个标签
         video_node = soup.select_one("#preview-video")
         if video_node:
             source_node = video_node.select_one("source")
             if source_node:
-                return [self.__class__.__name__,source_node.get("src")]
-        
-        # 策略 2: 检查预告片容器 (兼容旧结构或未登录状态)
+                return [self.__class__.__name__, source_node.get("src")]
+
+        # 策略 2：回退到预告片容器（用于页面结构差异，或未登录时缺少 #preview-video 的情况）
         trailer_node = soup.select_one(".preview-video-container")
         if trailer_node:
             # 可能是 video 标签或者 source 标签 (嵌套在容器内的情况)
             video_source = trailer_node.select_one("source")
             if video_source:
-                return [self.__class__.__name__,video_source.get("src")]
-            
+                return [self.__class__.__name__, video_source.get("src")]
+
             # 或者直接是 a 标签的 href (如果是 mp4 结尾)
             href = trailer_node.get("href")
             if href and (href.endswith(".mp4") or href.endswith(".m3u8")):
-                return [self.__class__.__name__,href]
-            
+                return [self.__class__.__name__, href]
+
             # 有些可能是 data-src
             data_src = trailer_node.get("data-src")
             if data_src:
-                return [self.__class__.__name__,data_src]
-                
+                return [self.__class__.__name__, data_src]
+
             # 如果链接跳转到登录页，说明需要登录权限
             if href == "/login":
                 logger.warning(f"无法获取预告片: 需要登录权限 (URL: {url})")
@@ -213,12 +213,12 @@ class Javdb(BaseCrawler):
 
     def get_image_urls(self, url: str) -> Optional[List[str]]:
         """
-        根据详情页 URL 获取剧照图片地址列表。
+        根据详情页 URL 获取剧照图片地址列表：返回 [爬虫名, url1, url2, ...]，下游用第 0 项选择对应爬虫实例。
         """
         soup = self._get_soup(url)
         if not soup:
             return None
-        
+
         images = []
         # 查找预览图部分
         preview_nodes = soup.select(".preview-images .tile-item")
@@ -226,36 +226,55 @@ class Javdb(BaseCrawler):
             href = node.get("href")
             if href:
                 images.append(href)
-        
+
         if not images:
             return None
-        images.insert(0,self.__class__.__name__)
+        images.insert(0, self.__class__.__name__)
         return images
-
 
     def main(self):
         """简单测试函数，用于验证爬虫是否正常工作。"""
-        #先访问首页刷新cookie
+        # 先访问首页刷新cookie
         self._get_soup(self.base_url)
 
         test_number = "ACHJ-075"
         url = self.search(test_number)
-        
+
         if not url:
             print("未找到详情页 URL")
             return
-        print(f"type:{type(url)}"+f"搜索到详情页 URL：{url}")
-        print(f"type:{type(self.get_title(url))}"+f"标题：{self.get_title(url)}")
-        print(f"type:{type(self.get_description(url))}"+f"简介：{self.get_description(url)}")
-        print(f"type:{type(self.get_release_date(url))}"+f"发行日期：{self.get_release_date(url)}")
-        print(f"type:{type(self.get_director(url))}"+f"导演：{self.get_director(url)}")
-        print(f"type:{type(self.get_studio(url))}"+f"片商：{self.get_studio(url)}")
-        print(f"type:{type(self.get_series(url))}"+f"系列：{self.get_series(url)}")
-        print(f"type:{type(self.get_category(url))}"+f"类别：{self.get_category(url)}")
-        print(f"type:{type(self.get_actors(url))}"+f"演员：{self.get_actors(url)}")
-        print(f"type:{type(self.get_cover_url(url))}"+f"封面 URL：{self.get_cover_url(url)}")
-        print(f"type:{type(self.get_trailer_url(url))}"+f"预告片 URL：{self.get_trailer_url(url)}")
-        print(f"type:{type(self.get_image_urls(url))}"+f"剧照 URL：{self.get_image_urls(url)}")
+        print(f"type:{type(url)}" + f"搜索到详情页 URL：{url}")
+        print(f"type:{type(self.get_title(url))}" + f"标题：{self.get_title(url)}")
+        print(
+            f"type:{type(self.get_description(url))}"
+            + f"简介：{self.get_description(url)}"
+        )
+        print(
+            f"type:{type(self.get_release_date(url))}"
+            + f"发行日期：{self.get_release_date(url)}"
+        )
+        print(
+            f"type:{type(self.get_director(url))}" + f"导演：{self.get_director(url)}"
+        )
+        print(f"type:{type(self.get_studio(url))}" + f"片商：{self.get_studio(url)}")
+        print(f"type:{type(self.get_series(url))}" + f"系列：{self.get_series(url)}")
+        print(
+            f"type:{type(self.get_category(url))}" + f"类别：{self.get_category(url)}"
+        )
+        print(f"type:{type(self.get_actors(url))}" + f"演员：{self.get_actors(url)}")
+        print(
+            f"type:{type(self.get_cover_url(url))}"
+            + f"封面 URL：{self.get_cover_url(url)}"
+        )
+        print(
+            f"type:{type(self.get_trailer_url(url))}"
+            + f"预告片 URL：{self.get_trailer_url(url)}"
+        )
+        print(
+            f"type:{type(self.get_image_urls(url))}"
+            + f"剧照 URL：{self.get_image_urls(url)}"
+        )
+
 
 if __name__ == "__main__":
     # 测试实例初始化
@@ -275,7 +294,7 @@ if __name__ == "__main__":
             "Sec-Fetch-Mode": "navigate",
             "Sec-Fetch-Site": "none",
             "Sec-Fetch-User": "?1",
-            "Upgrade-Insecure-Requests": "1"
+            "Upgrade-Insecure-Requests": "1",
         },
         "timeout": 15,
         "max_retries": 3,

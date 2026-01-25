@@ -2,7 +2,6 @@
 src/crawlers/__pycache__/
 avscraper.db
 config.yaml
-uv.lock
 .trae/
 src/__pycache__/
 videos/
@@ -10,3 +9,5 @@ javoutp/
 findings.md
 progress.md
 task_plan.md
+debug_detail.html
+__pycache__
